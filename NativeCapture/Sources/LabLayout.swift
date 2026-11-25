@@ -797,8 +797,13 @@ nonisolated struct LabWalkPose: Equatable {
         }
         // Interior triangle centers work even when a concave room's centroid is outside.
         let triangles = (try? LabGeometry.triangulate(floor)) ?? []
-        let candidates = [center] + stride(from: 0, to: triangles.count, by: 3).map { i in
-            (floor[Int(triangles[i])] + floor[Int(triangles[i + 1])] + floor[Int(triangles[i + 2])]) / 3
+        // Explicit types keep the type checker fast on slower build machines.
+        var candidates: [SIMD2<Float>] = [center]
+        for i in stride(from: 0, to: triangles.count, by: 3) {
+            let a: SIMD2<Float> = floor[Int(triangles[i])]
+            let b: SIMD2<Float> = floor[Int(triangles[i + 1])]
+            let c: SIMD2<Float> = floor[Int(triangles[i + 2])]
+            candidates.append((a + b + c) / 3)
         }
         let point = candidates.first { permits($0, in: layout) } ?? candidates.first { LabGeometry.contains($0, polygon: floor) } ?? center
         return .init(position: SIMD3(point.x, layout.floorHeight + 1.58, point.y), yaw: 0)
