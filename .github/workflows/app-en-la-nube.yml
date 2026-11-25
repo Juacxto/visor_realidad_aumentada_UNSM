@@ -1,0 +1,73 @@
+# Compila Nexus AR en una Mac de GitHub y deja la app lista para el simulador (Appetize o Xcode).
+# No necesita una Mac propia: se ejecuta solo al subir cambios, o a mano desde la pestaña Actions.
+name: App en la nube
+
+on:
+  push:
+    branches: [main, test_feria, feat/modo-feria]
+  workflow_dispatch:
+
+jobs:
+  compilar:
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Versión de Xcode
+        run: xcodebuild -version
+
+      - name: Compilar la app para el simulador de iPhone
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project NativeCapture/NexusRoomCapture.xcodeproj \
+            -scheme NexusRoomCapture \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build \
+            ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build | tee xcodebuild.log | grep -E "error:|warning: .*(FairMode|LabAssistant|LabScene)|BUILD (SUCCEEDED|FAILED)" || true
+          grep -q "BUILD SUCCEEDED" xcodebuild.log
+
+      - name: Empaquetar la app
+        run: |
+          APP=$(find build/Build/Products/Debug-iphonesimulator -maxdepth 1 -name "*.app" | head -1)
+          echo "App: $APP"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" NexusAR-simulador.zip
+          ls -lh NexusAR-simulador.zip
+
+      - name: Guardar la app para descargarla
+        uses: actions/upload-artifact@v4
+        with:
+          name: NexusAR-simulador
+          path: NexusAR-simulador.zip
+          retention-days: 30
+
+      - name: Guardar el registro de compilación
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: registro-de-compilacion
+          path: xcodebuild.log
+          retention-days: 14
+
+  checks:
+    runs-on: macos-26
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: NativeCapture
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checks del modo feria
+        run: |
+          xcrun swiftc Sources/RoomStructure.swift Sources/HardwareCatalog.swift Sources/LabLayout.swift Sources/LabTopology.swift Sources/LabARAssembly.swift Sources/FairMode.swift Tests/LabFairCheck.swift -o /tmp/nexus-fair-check
+          /tmp/nexus-fair-check
+      - name: Checks del asistente Nexus
+        if: always()
+        run: |
+          xcrun swiftc Sources/RoomStructure.swift Sources/HardwareCatalog.swift Sources/LabLayout.swift Sources/LabTopology.swift Sources/LabARAssembly.swift Sources/FairMode.swift Sources/LabAssistant.swift Tests/LabAssistantCheck.swift -o /tmp/nexus-assistant-check
+          /tmp/nexus-assistant-check
