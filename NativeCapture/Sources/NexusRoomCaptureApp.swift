@@ -298,6 +298,51 @@ private struct LaboratoryScreen: View {
     }
 
     var body: some View {
+        laboratoryWithSheets
+        .fileImporter(isPresented: $showImporter, allowedContentTypes: [.json], allowsMultipleSelection: false) { result in
+            if case .success(let urls) = result, urls.isEmpty { return }
+            let site = operations.siteStorageID
+            // An explicit result type keeps the type checker fast on slower build machines.
+            loadProject("Importando topología…", retryImport: true, build: { () throws -> (LabProject, LabImport.Entry) in
+                guard let url = try result.get().first else { throw CocoaError(.fileNoSuchFile) }
+                let scoped = url.startAccessingSecurityScopedResource()
+                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+                let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+                guard size > 0, size <= 8 * 1024 * 1024 else { throw LabLayoutError.invalid("Archivo vacío o mayor de 8 MB.") }
+                let data = try Data(contentsOf: url, options: .mappedIfSafe)
+                let project = try LabImport.project(from: data)
+                if project.editableID != nil { return try LabImport.createEditableCopy(of: project, site: site) }
+                let source = try JSONDecoder().decode(LabTopology.self, from: data)
+                let saved = try LabImport.save(source, site: site)
+                return (project, LabImport.Entry(url: saved, name: project.topology.name, date: .now))
+            }) { result in
+                showInventory(result.0, entry: result.1)
+            }
+        }
+        .alert(cameraAccessDenied ? "Nexus AR necesita acceso a la cámara" : "No se pudo completar la acción", isPresented: $showError) {
+            if cameraAccessDenied {
+                Button("Abrir Ajustes") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
+                }
+            } else if retryImport {
+                Button("Elegir otro archivo") { showImporter = true }
+            } else if capture.isSupported {
+                Button("Volver a escanear") { beginCapture() }
+            }
+            Button("Cerrar", role: .cancel) {}
+        } message: { Text(errorMessage) }
+        .onChange(of: showError) { _, presented in
+            if !presented {
+                retryImport = false
+                cameraAccessDenied = false
+            }
+        }
+        .environment(operations)
+        .environment(savedLaboratories)
+    }
+
+    /// Split from `body` so the Swift type checker handles the long modifier chain in parts.
+    private var laboratoryWithLifecycle: some View {
         laboratoryNavigation
         .tint(.accentColor)
         .task(id: scenePhase) {
@@ -507,6 +552,10 @@ private struct LaboratoryScreen: View {
                 }
             }
         }
+    }
+
+    private var laboratoryWithSheets: some View {
+        laboratoryWithLifecycle
         .sheet(item: $selection, onDismiss: {
             if rackForMonitors != nil { showAssemblyLocations() }
         }) { item in
@@ -626,46 +675,6 @@ private struct LaboratoryScreen: View {
                 .toolbar { DismissButton() }
             }
         }
-        .fileImporter(isPresented: $showImporter, allowedContentTypes: [.json], allowsMultipleSelection: false) { result in
-            if case .success(let urls) = result, urls.isEmpty { return }
-            let site = operations.siteStorageID
-            // An explicit result type keeps the type checker fast on slower build machines.
-            loadProject("Importando topología…", retryImport: true, build: { () throws -> (LabProject, LabImport.Entry) in
-                guard let url = try result.get().first else { throw CocoaError(.fileNoSuchFile) }
-                let scoped = url.startAccessingSecurityScopedResource()
-                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-                let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-                guard size > 0, size <= 8 * 1024 * 1024 else { throw LabLayoutError.invalid("Archivo vacío o mayor de 8 MB.") }
-                let data = try Data(contentsOf: url, options: .mappedIfSafe)
-                let project = try LabImport.project(from: data)
-                if project.editableID != nil { return try LabImport.createEditableCopy(of: project, site: site) }
-                let source = try JSONDecoder().decode(LabTopology.self, from: data)
-                let saved = try LabImport.save(source, site: site)
-                return (project, LabImport.Entry(url: saved, name: project.topology.name, date: .now))
-            }) { result in
-                showInventory(result.0, entry: result.1)
-            }
-        }
-        .alert(cameraAccessDenied ? "Nexus AR necesita acceso a la cámara" : "No se pudo completar la acción", isPresented: $showError) {
-            if cameraAccessDenied {
-                Button("Abrir Ajustes") {
-                    if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
-                }
-            } else if retryImport {
-                Button("Elegir otro archivo") { showImporter = true }
-            } else if capture.isSupported {
-                Button("Volver a escanear") { beginCapture() }
-            }
-            Button("Cerrar", role: .cancel) {}
-        } message: { Text(errorMessage) }
-        .onChange(of: showError) { _, presented in
-            if !presented {
-                retryImport = false
-                cameraAccessDenied = false
-            }
-        }
-        .environment(operations)
-        .environment(savedLaboratories)
     }
 
     /// Built outside `body` with explicit closure types so slower build machines type-check it in time.
