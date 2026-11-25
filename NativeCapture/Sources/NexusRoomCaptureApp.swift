@@ -645,7 +645,8 @@ private struct LaboratoryScreen: View {
         .fileImporter(isPresented: $showImporter, allowedContentTypes: [.json], allowsMultipleSelection: false) { result in
             if case .success(let urls) = result, urls.isEmpty { return }
             let site = operations.siteStorageID
-            loadProject("Importando topología…", retryImport: true, build: {
+            // An explicit result type keeps the type checker fast on slower build machines.
+            loadProject("Importando topología…", retryImport: true, build: { () throws -> (LabProject, LabImport.Entry) in
                 guard let url = try result.get().first else { throw CocoaError(.fileNoSuchFile) }
                 let scoped = url.startAccessingSecurityScopedResource()
                 defer { if scoped { url.stopAccessingSecurityScopedResource() } }

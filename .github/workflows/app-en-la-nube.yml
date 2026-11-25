@@ -14,8 +14,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Versión de Xcode
-        run: xcodebuild -version
+      - name: Elegir el Xcode más nuevo (el proyecto usa APIs de iOS 27)
+        run: |
+          ls -d /Applications/Xcode*.app
+          NEWEST=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          sudo xcode-select -s "$NEWEST"
+          xcodebuild -version
 
       - name: Compilar la app para el simulador de iPhone
         run: |
