@@ -20,6 +20,7 @@ jobs:
           NEWEST=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
           sudo xcode-select -s "$NEWEST"
           xcodebuild -version
+          swift --version
 
       - name: Compilar la app para el simulador de iPhone
         run: |

@@ -510,23 +510,7 @@ private struct LaboratoryScreen: View {
         .sheet(item: $selection, onDismiss: {
             if rackForMonitors != nil { showAssemblyLocations() }
         }) { item in
-            NavigationStack {
-                PlacementInspector(placement: item, topology: currentTopology, locateTitle: locateTitle,
-                                   onLocate: locateInScene, console: deviceConsole,
-                                   onMonitors: item.kind == .rack && canUseAR ? {
-                                       rackForMonitors = item.id
-                                       selection = nil
-                                   } : nil,
-                                   rackTools: activeAssembly == nil && item.kind == .rack ? AnyView(roomRackTools(item)) : nil,
-                                   moveDevice: rackDeviceMove,
-                                   onAdjust: mode == .room ? {
-                                       begin3DPlacement(item)
-                                       selection = nil
-                                   } : nil,
-                                   poweredOff: $poweredOff, effectivePowerOff: effectivePoweredOff, devicePowerCut: powerCut(for:))
-                    .toolbar { DismissButton() }
-            }
-            .presentationDetents([.medium, .large])
+            placementSheet(item)
         }
         .sheet(item: $hardwareSelection) { item in
             NavigationStack { HardwareDetail(item: item).toolbar { DismissButton() } }
@@ -682,6 +666,35 @@ private struct LaboratoryScreen: View {
         }
         .environment(operations)
         .environment(savedLaboratories)
+    }
+
+    /// Built outside `body` with explicit closure types so slower build machines type-check it in time.
+    private func placementSheet(_ item: LabPlacement) -> some View {
+        var onMonitors: (() -> Void)?
+        if item.kind == .rack && canUseAR {
+            onMonitors = {
+                rackForMonitors = item.id
+                selection = nil
+            }
+        }
+        var onAdjust: (() -> Void)?
+        if mode == .room {
+            onAdjust = {
+                begin3DPlacement(item)
+                selection = nil
+            }
+        }
+        let rackTools: AnyView? = activeAssembly == nil && item.kind == .rack ? AnyView(roomRackTools(item)) : nil
+        let inspector = PlacementInspector(placement: item, topology: currentTopology, locateTitle: locateTitle,
+                                           onLocate: locateInScene, console: deviceConsole,
+                                           onMonitors: onMonitors, rackTools: rackTools,
+                                           moveDevice: rackDeviceMove, onAdjust: onAdjust,
+                                           poweredOff: $poweredOff, effectivePowerOff: effectivePoweredOff,
+                                           devicePowerCut: powerCut(for:))
+        return NavigationStack {
+            inspector.toolbar { DismissButton() }
+        }
+        .presentationDetents([.medium, .large])
     }
 
     private func receivedLabBanner(_ entry: LabImport.Entry) -> some View {

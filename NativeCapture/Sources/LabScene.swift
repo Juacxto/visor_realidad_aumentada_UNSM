@@ -4541,6 +4541,8 @@ struct LabSceneView: UIViewRepresentable {
             let projectedPoint = SIMD3(projectedWorld.x, projectedWorld.y, projectedWorld.z)
             let size = view.bounds.size
             let screen: CGPoint
+            #if compiler(>=6.4)
+            // The iOS 27 SDK (Xcode 27) adds projection by rotation angle.
             if #available(iOS 27, *) {
                 let angle: CGFloat = switch orientation {
                 case .landscapeRight: 0
@@ -4552,6 +4554,10 @@ struct LabSceneView: UIViewRepresentable {
             } else {
                 screen = frame.camera.projectPoint(projectedPoint, orientation: orientation, viewportSize: size)
             }
+            #else
+            // Xcode 26 builds, such as the cloud build, use the orientation API.
+            screen = frame.camera.projectPoint(projectedPoint, orientation: orientation, viewportSize: size)
+            #endif
             guard screen.x.isFinite, screen.y.isFinite else { return }
             let dx = Float(2 * screen.x / size.width - 1)
             let dy = Float(2 * screen.y / size.height - 1)
